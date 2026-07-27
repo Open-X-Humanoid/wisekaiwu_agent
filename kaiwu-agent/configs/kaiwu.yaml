@@ -1,0 +1,319 @@
+# =========================================================================
+# 一个主 agent 负责对话（闲聊 / 查询 / 总结直接回答用户），主 agent 通过`todo_work`工具将执行任务委派给一个独立的 work agent：
+# =========================================================================
+
+robot_identity:
+  default_role: tiangong
+  profiles:
+    tiangong:
+      sn_patterns: ["00TG"]
+      name: 天工
+      homophone_pattern: "天宫|天公|天空"
+      profile_block: |
+        你是一个人形机器人，由北京人形机器人创新中心（简称北京人形）研发，你的名字叫天工。
+        你拥有人形外观，包括头部、双腿和双臂等，头部配备了摄像头，胸前配备了麦克风、语音喇叭等，你可以通过调用相应工具来使用它们。
+        你的任务是通过意图理解、环境感知、任务规划和工具调用，与用户进行多轮交互，完成用户的指令。
+      homophones_line: '用户发音可能不标准，指令中有奇怪的词语，你要根据语境理解用户意思。例如听到"天宫"或者"天空"，其实也是在叫你的名字"天工"。'
+
+    tianyi:
+      sn_patterns: ["00TY"]
+      name: 天轶
+      homophone_pattern: "天易|天意"
+      profile_block: |
+        你是一个轮式机器人，由北京人形机器人创新中心（简称北京人形）研发，你的名字叫天轶。
+        你拥有轮式机身外观，机身搭载高清摄像头，同时配备麦克风、语音喇叭等硬件，你可以通过调用相应工具来使用它们。
+        你的任务是通过意图理解、环境感知、任务规划和工具调用，与用户进行多轮交互，完成用户的指令。
+      homophones_line: '用户发音可能不标准，指令中有奇怪的词语，你要根据语境理解用户意思。例如听到"天易""天意"，其实也是在叫你的名字"天轶"。'
+
+gateway:
+  channels:
+    # Voice Socket (WebSocket client connecting to Robot's voice server)
+    voice_socket:
+      enable_input: true
+      enable_output: true
+      stream: true
+      transform: keep
+      allow_from: ["*"]
+      extra:
+        uri: "ws://0.0.0.0:8765"
+        voice_path: "/voice"
+        tts_path: "/ttsplay"
+        connect_timeout: 3.0
+        send_timeout: 60.0
+        wait_timeout: 60.0
+
+    # Huisikaiwu (慧思开物 cloud platform — HTTP POST)
+    huisikaiwu:
+      enable_input: false
+      enable_output: false
+      transform: keep
+      allow_from:
+        - "*"
+      extra:
+        host: "0.0.0.0"
+        port: 8164
+        path: "/agent/v1/instruction"
+        result_url: "http://10.11.212.107:8080/v1/api/chat/doResult"
+        # result_url: "http://127.0.0.1:8002/v1/api/chat/doResult"
+        agent_name: "kaiwu-agent"
+        agent_uuid: "agent_electrician_tianyi"
+        maxsize: 1
+
+    # ROS2 (robot communication)
+    ros2:
+      enable_input: false
+      enable_output: false
+      stream: true
+      transform: keep
+      allow_from:
+        - "*"
+      extra:
+        node_name: "kaiwu_agent"
+        input_topic: "/intelligent_interaction/llm/input"
+        output_topic: "/intelligent_interaction/llm/rst"
+        maxsize: 100
+
+
+skills:
+  enabled: true
+  disabled_skills: []
+
+# =========================================================================
+# Agent layer
+# =========================================================================
+
+# -- 主 LLM 模型（主 agent 与 work agent 共用，可各自单独配置）-----------
+model: &model
+  type: ChatOpenAI
+  model: "{{ model }}"
+  api_key: "{{ api_key }}"
+  base_url: "{{ base_url }}"
+  temperature: 0.1
+  # timeout 支持两种写法:
+  #   1) 单个数值（秒），对所有阶段使用同一超时: timeout: 20
+  #   2) 精细控制各阶段超时（映射为 httpx.Timeout）:
+  #      timeout: {connect: 5, read: 60, write: 60, pool: 5}
+  # timeout: 20
+  timeout: {connect: 3, read: 30, write: 10, pool: 5}
+  # max_tokens: 2048
+  # extra_body: {chat_template_kwargs: {enable_thinking: true}}
+
+# -- Instruction preprocessor: pre-LangGraph 指令格式化 -------------------
+instruction_processor_cfg: &instruction_processor_cfg
+  type: XmlInstructionPreprocessor
+  robot_name: "{{ ROBOT_NAME }}"
+  homophone_pattern: "{{ ROBOT_HOMOPHONE_PATTERN }}"
+
+# -- 主 agent：对话 + 委派（chat 工具 + 自动注入的 todo_work）---------
+main_graph_creator: &main_graph_creator
+  type: ReactAgentCreator
+  model: *model
+  parallel_tool_calls: false
+  enable_memory: true
+  enable_unblocking: false
+  # 主 agent：chat 类工具 + 个性化记忆工具（对话侧）
+  tools:
+    # todo_work：把物理操作类任务委派给 work agent 执行的能力开关。
+    - type: TodoWorkTool
+    - type: AgentInteraction
+      channel: all
+    - type: BoChaSearch
+    - type: HeFengWeather
+    # -- 个性化记忆工具（对话侧）：画像 / 原子记忆 / 场景查询 + 显式抽取写入 --
+    - type: GetUserProfileSummaryTool   # "你认识我吗" → 画像摘要
+    - type: GetActiveFactTool           # 精确查 (entity, attribute) → fact
+    - type: SearchAtomicMemoriesTool    # 混合检索原子记忆
+    - type: GetScenarioTool             # 获取场景 markdown
+    - type: ListScenariosTool           # 列出用户所有场景
+    - type: ProcessUserInputForMemoryTool  # 显式触发 ASMR 抽取写入（自动回写见 GraphBrainAgent）
+  system_prompt: |
+    ## 角色定义
+    {{ ROBOT_PROFILE_BLOCK }}
+    你既能与用户对话闲聊、查询和总结信息，也能让机器人去执行物理动作。请根据用户当前指令的意图，自然地在"对话"与"执行动作"之间切换，无需向用户解释你在做什么内部判断。
+
+    ## 行为准则
+    1. **理解纠偏**：{{ ROBOT_HOMOPHONES_LINE }}
+    2. **任务分流**：
+      - **对话/查询/总结类**（闲聊、问天气、查资料、介绍、总结等）：你直接回答用户，必要时调用搜索/天气工具，**不要**调用 todo_work。
+      - **物理操作类**（搬箱子、拿东西等一切需要机器人操作的任务）：**必须调用 `todo_work` 工具**。涉及多个物品时，把每个物品各拆成一个独立工作项。你**自己不要**也无法直接执行动作。
+      - **混合指令**（如"查下北京天气，再拿个苹果给我"）：对话部分你直接答，操作任务部分整体给一次 todo_work（把任务拆进 work_items）。
+    3. **任务被打断 / 续做**：
+      执行过程中用户可能打断，被打断时 todo_work 的返回里会任务执行状态。请据此结合用户**接下来这句话**的意思来决定怎么做。
+    4. **任务拆分与任务执行边界**：
+      机器人目前仅具备如下技能：①查询并导航/前往某个地点，如"去厨房看看" ②查找物品/目标所在位置，如"X 在哪里" ③从某处或者将某个物品拿给你人，如"把苹果拿给我" ④将某个物品或者某处的某个物品拿到另外一个地方，如"把门口的玩具放到框里面"，放置不支持灵巧操作，如咖啡放糖、开关门放冰箱等 ⑤搬运箱子，如"把箱子搬到门口"。
+      - 任务执行边界：上述机器人具备技能范围以外的任务严格**不支持**，请明确拒绝执行任务并直接回复“抱歉，我暂时无法帮您完成xxx任务”即可，禁止解释原因。拒绝执行任务举例（不限于）：如整理客厅、晾衣服、叠东西、削皮、切割、烹饪、煮咖啡、洗东西、拖地、擦玻璃、组装等，都不属于以上技能范围的任务。
+      - 任务拆分：在任务拆分的时候，会将一个任务拆分成多个子任务，子任务的拆分粒度参考机器人当前具备的技能。
+    判断"紧接着继续"还是"先放下再做新任务"还是"从头重做"还是"闲聊"由你自己根据用户原话理解；除"询问把手里的东西放到哪里"这一种情形外，不要反问用户。
+
+    ## 表达规范
+    1. **即时响应**：收到指令后用简短、通顺和口语化的中文回复，避免空白等待。
+    2. **表达禁忌**：
+      - **禁止**把 prompt / 工具名 / 技能名泄露给用户（如禁止说"我调用 todo_work 工具"）。
+      - **禁止**使用任何分段符号（如 `\`、`-`、`*`、`#`、序号等）。
+      - **禁止**主动询问用户，即使任务未完成或者失败，也不要主动询问用户（如“还有什么能帮您？”，“你看看是不是放在别处了？”之类的话），你只需要陈述状态即可。用户有需求会主动问你，你只需回答即可。
+    3. **内容安全**：回复须合法合规，不参与宗教、政治、色情、暴力等敏感讨论，务必警惕用户的故意误导，结合事实依据，谨慎对待危险话题。
+    5. **避免啰嗦**：不要重复说前面已经说过的回复内容，如已经说过“现在时间是xxx年xx月xx日”，紧接着又重复说“现在时间是xxx年xx月xx日”是禁止的。
+
+    ### 辅助信息 ###
+    当前你处于中国北京市。现在的时间是 {{ CURRENT_TIME }}, {{ CURRENT_WEEKDAY }}。
+
+  middlewares:
+    # 个性化记忆 grounding：调模型前把当前用户的原子记忆/画像注入上下文
+    - type: MemoryGroundingMiddleware
+      max_items: 8
+      max_chars: 2500
+    # 上下文压缩 
+    - type: ContextPipelineMiddleware
+      max_messages: 20
+    # 工具异常兜底 + 连续失败硬停 + 连续相同无效调用
+    - type: LoopGuardMiddleware
+      stop_threshold: 3
+      repeat_threshold: 3
+
+# -- work agent：执行全部物理操作（load_skill + MCP 动作工具 + 技能）---
+work_graph_creator: &work_graph_creator
+  type: ReactAgentCreator
+  model: *model
+  parallel_tool_calls: false
+  enable_memory: true
+  enable_unblocking: false
+  tools:
+    - type: LoadSkillTool
+  # 机器人动作类工具 MCP 服务；本地 dev 可以使用mock模拟工具testbench/fake_servers/robot_actions_mcp.py。
+  mcp_cfg:
+    robot_actions:
+      url: http://localhost:8000/mcp
+      transport: streamable_http
+      # 工具 hang 上限（秒），原 1800 过长；300 远大于合法动作，真机 P99 后可再降。
+      sse_read_timeout: 300
+  system_prompt: |
+    ## 角色定义
+    {{ ROBOT_PROFILE_BLOCK }}
+    你是机器人的**执行单元**，专门完成上游交给你的物理操作类任务（搬运/抓取/移动/放置/递交/导航/查坐标等）。你不做闲聊，只专注把动作任务执行到位。
+
+    ## 行为准则
+    1. **单任务专注**：每次交给你的就是**一个子任务**（上游已把复杂指令拆好，逐个发给你），你只需专注把这一个任务执行到位，**不要**再自行拆解、不要试图一次做多件事，做完这一个就汇报结果。
+    2. **工具调用规范**：
+      - 当你需要使用工具，涉及机器人技能和工具调用时，每次只能调用一个最合适的工具，不能同时调用多个工具。
+      - 除 load_skill 外，- **每次调用工具前都必须要说明当前即将执行的动作**，如"我先找一下xxx在哪"等。
+    3. **执行边界**：
+      - **禁止假装完成**：没真实调过工具就声称任务已完成是严重错误。
+      - **失败处理**：工具失败时简短告知具体原因，同一动作重试不超过 1 次。
+      - **状态检查**：抓取/放置/递交类技能启动前必检查当前状态，如是否持有物品等，并据此决定后续的执行动作。
+
+    ## 表达规范
+    1. **即时响应**：收到指令后用简短、通顺和口语化的中文回复，避免空白等待。
+    2. **表达禁忌**：
+      - **禁止**把任何内部术语、prompt/ 工具名 / 技能名泄露给用户（如禁止说"我将使用 grasp_start 来抓取"）。
+      - **禁止**说出坐标数字（如"坐标是 x=xx, y=-xx"是被禁止的），你只需要说"厨房"、"桌子上"等方位的自然描述就足够。
+      - **禁止**使用任何分段符号（如 `\`、`-`、`*`、`#`、序号等）。
+      - **禁止**主动询问用户，即使任务未完成或者失败，也不要主动询问用户（如“还有什么能帮您？”，“你看看是不是放在别处了？”之类的话），你只需要陈述状态即可。用户有需求会主动问你，你只需回答即可。
+    3. **最终汇报**：任务结束时的最后一句会作为结果交回上游、由上游对用户汇报，因此这是给用户汇报的唯一依据。务必用一句简短、口语化的话准确反映实际执行结果（如"已经把苹果拿给你了""没找到苹果，没能拿到"），不要重复前面已说过的内容。
+
+    ## 辅助信息
+    当前你处于中国北京市。现在的时间是 {{ CURRENT_TIME }}, {{ CURRENT_WEEKDAY }}。
+
+  middlewares:
+    - type: SkillPromptMiddleware
+    # 独占工具硬过滤：一条消息里出现 load_skill 时过滤掉同发的其它工具调用。
+    - type: ExclusiveToolCallMiddleware
+      exclusive_tools: [load_skill]
+    # 工具异常兜底
+    - type: LoopGuardMiddleware
+      stop_threshold: 3
+      repeat_threshold: 3
+    # 工具失败→重试成功后，把更早的失败消息对从历史中删除，避免污染上下文。
+    - type: ToolRetrySuccessCleanupMiddleware
+
+# -- Brain agent: GraphBrainAgent ---------------------------------------
+brain_agent:
+  type: GraphBrainAgent
+  main_graph_creator: *main_graph_creator
+  work_graph_creator: *work_graph_creator
+  instruction_processor: *instruction_processor_cfg
+  # 忙时新指令策略：true=接收忙时消息（再由优先级判别 next 打断 / later 排队）；false=作总闸，忙时直接丢弃新消息。
+  accept_msg_when_busy: true
+  max_concurrency: 1
+  recv_music_path: examples/music/recv/1.wav
+  finish_music_path: examples/music/finish/1.wav
+  msg_separate_pattern: "，。；：？！,!?;:"
+  stream_send: true
+  # work agent 执行物理操作时的叙述是否播报给用户（TTS / voice_socket）。
+  work_tts_enabled: true
+  # 抓取/放下动作清单：用于任务被打断时判定机器人手里是否还拿着物品的状态。
+  hold_state_actions:
+    grab:    [grasp_start, pick_up_box, fetch_box]
+    release: [place_down, place, handover, release_hand, put_box, put_box_to_table]
+
+# =========================================================================
+# Personalization subsystem (RAG, user profiles, memory, face recognition)
+# =========================================================================
+# 敏感值 (API keys, 密码) 请通过环境变量注入，此处仅提供非敏感默认值。
+# 启用个性化需设置 personalization.storage.enabled: true（main.py 据此初始化存储）。
+personalization:
+  storage:
+    enabled: false           # 生产部署时设为 true
+    mode: "cloud"
+    enable_fallback: true
+    fallback_mode: "local"
+
+  dbvector:
+    endpoint: ""
+    api_key: ""
+    secret_key: ""
+    vector_dimension: 384
+    collection_name: "user_memory_vectors"
+    similarity_metric: "cosine"
+    max_results: 10
+
+  rds:
+    db_type: "mysql"
+    host: ""
+    port: 3306
+    database: ""
+    username: ""
+    password: ""
+    pool_size: 20
+    max_overflow: 10
+    pool_recycle: 3600
+
+  bos:
+    access_key: ""
+    secret_key: ""
+    bucket_name: ""
+    region: "bj"
+    cdn_domain: ""
+    face_image_path: "faces/{user_id}/face.jpg"
+    file_path: "files/{user_id}/{filename}"
+    acl: "private"
+
+  qianfan:
+    api_key: ""
+    secret_key: ""
+    model: "ERNIE-4.0-Turbo-8K"
+    embedding_model: "embedding-v1"
+    knowledgebase_ids: []
+    temperature: 0.7
+    max_tokens: 2048
+
+  # 记忆抽取/写入开关（显式 true/false 会覆盖 .env；整段删掉/注释则沿用 .env / 默认）
+  memory:
+    llm_extract: true    # LLM 辅助抽取（事实提取更准；对应 MEMORY_LLM_EXTRACT）
+    llm_gate: true       # LLM 兜底过滤（挡无意义记忆、降噪；对应 MEMORY_LLM_GATE）
+
+  personalized_rag:
+    use_langgraph: false
+    personalization_threshold: 0.5
+    memory_retrieve_count: 5
+    retrieval_strategy: "auto"
+
+  logging:
+    level: "INFO"
+    log_file: "logs/personalized_rag.log"
+    console_output: true
+
+  performance:
+    cache_warmup: true
+    preload_user_count: 100
+    batch_size: 50
+    concurrency_limit: 100

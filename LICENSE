@@ -1,0 +1,28 @@
+Proprietary License Agreement
+
+Copyright (c) 2025 Beijing Innovation Center of Humanoid Robotics
+All rights reserved.
+
+This repository, including source code, binaries, documentation, and other related files
+(collectively, the "Software"), is the property of Beijing Innovation Center of Humanoid Robotics.
+
+Usage of this Software, whether for commercial or non-commercial purposes,
+is strictly prohibited without prior written authorization from Beijing Innovation Center of Humanoid Robotics.
+
+Redistribution, modification, reverse engineering, sublicensing, or creation of derivative
+works based on this Software are not permitted unless explicitly authorized in writing.
+
+Third-Party Components:
+This repository uses certain key third-party open source software components.
+Their licenses are provided in the `notice.md` file included in this repository.
+Other dependencies may also apply and should be reviewed by users as appropriate.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
+INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
+PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT
+OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+OTHER DEALINGS IN THE SOFTWARE.
+
+For licensing inquiries or authorization requests, please contact:
+jason.ju@x-humanoid.com

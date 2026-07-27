@@ -1,0 +1,1 @@
+机器人skill配置的目录，根据本体具有的技能来配置skill，skill如何写参考：testbench/fake_skills

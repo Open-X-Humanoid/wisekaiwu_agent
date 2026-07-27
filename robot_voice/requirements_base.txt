@@ -1,0 +1,19 @@
+json5
+ws4py
+asyncio
+websocket-client
+websockets==13.1.0
+icmplib
+requests>=2.32.0
+numpy
+pyaudio
+pydub
+cffi==1.14.0; python_version == "3.8"
+gevent==21.1.2; python_version == "3.8"
+grpcio
+grpcio-tools
+python-dotenv
+opencv-python
+soxr
+sounddevice
+aiohttp

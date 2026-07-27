@@ -1,0 +1,36 @@
+loguru
+python-dotenv
+fastapi
+google-search-results
+# LangChain 1.x + LangGraph 1.x（须一致；与 langchain-openai 1.x 匹配）
+langchain-core>=1.4.0,<2.0.0
+langchain>=1.2.9,<2.0.0
+langchain-openai>=1.2.2,<2.0.0
+langchain-community>=0.4.1,<1.0.0
+langchain-mcp-adapters>=0.2.1,<0.3.0
+langgraph>=1.1.5,<1.2.0
+langgraph-prebuilt>=1.0.5
+nuitka
+openai
+opencv-python
+pyjwt
+pyowm
+pytest
+pytest-asyncio>=0.24.0
+scikit-learn
+setuptools
+supervision
+uvicorn
+websockets
+zerorpc
+filelock==3.29.0
+litellm>=1.55.0
+fastmcp==3.3.1
+pymochow==2.4.1
+pymysql==1.2.0
+bce-python-sdk
+# 记忆抽取的中文分词/词性/NER 引擎（kaiwu/personalization/memory_schema.py）。
+# 三级降级：HanLP → pkuseg → jieba → 字符；全部为可选依赖，装不上自动降级、不影响启动。
+# - hanlp：精度最高、带 NER，但较重（依赖 torch，边缘设备酌情安装）；仅 MEMORY_NLP_ENGINE=hanlp 时加载。
+# - pkuseg / jieba：轻量兜底，边缘设备友好。
+jieba

@@ -1,0 +1,4 @@
+-r requirements_base.txt
+
+# 公共算法组件
+../algo_tools/algo_tools.tar.gz

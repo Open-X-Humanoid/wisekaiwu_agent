@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Logging Viewer</title>
+    <style>
+        body { font-family: Arial, sans-serif; }
+        #log { max-height: 80vh; overflow-y: auto; border: 1px solid #ccc; padding: 10px; }
+        .log-entry { margin: 5px 0; }
+    </style>
+</head>
+<body>
+    <h1>BrainAgent</h1>
+    <div id="log"></div>
+
+    <script>
+        // 连接到 Orin 上的 WebSocket 服务器
+        const ws = new WebSocket("ws://10.11.6.137:8686");
+
+        ws.onmessage = function(event) {
+            const logContainer = document.getElementById("log");
+            const logEntry = document.createElement("div");
+            logEntry.className = "log-entry";
+            logEntry.textContent = event.data;
+            logContainer.appendChild(logEntry);
+            logContainer.scrollTop = logContainer.scrollHeight;  // 自动滚动到底部
+        };
+
+        ws.onopen = function() {
+            console.log("Connected to WebSocket server");
+        };
+
+        ws.onclose = function() {
+            console.log("Disconnected from WebSocket server");
+        };
+    </script>
+</body>
+</html>
