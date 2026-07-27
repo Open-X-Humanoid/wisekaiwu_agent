@@ -62,7 +62,7 @@ wisekaiwu_agent/
 │   ├── configs/                 #   运行配置
 │   │   ├── kaiwu.yaml           #     主配置：机器人身份、通道、工具、个性化
 │   │   ├── model.yaml           #     模型服务配置
-│   │   └── references/          #     知识库引用（产品资料、地图数据等）
+│   │   └── references/          #     产品知识引用
 │   ├── skills/                  #   技能定义目录（SKILL.md）
 │   ├── testbench/               #   本地验证工具（mock MCP / mock 云平台）
 ├── robot_voice/                 # 语音交互终端（语音输入 / TTS 播报）
@@ -192,13 +192,17 @@ ros2 topic echo /xunfei/aiui_msg     # 检查 /xunfei/aiui_msg 消息节点是�
 **启动语音服务**
 
 > 启动前请确认已在 `robot_voice` 目录并激活其虚拟环境（`cd robot_voice && source .venv/bin/activate`）。
+>
+> 首次启动前，还需将 `.example.env` 复制为 `.env`，并填入自己的密钥（豆包语音等）：
+>
+> ```bash
+> cp .example.env .env
+> # 然后编辑 .env，把 your_xxx_here 替换成自己的 key
+> ```
 
 按机器人环境选用其中一种：
 
 ```bash
-# ROS1 语音服务（暂不支持，请联系我们解决）
-python server.py
-
 # ROS2 语音服务
 python server_event.py
 
@@ -207,20 +211,28 @@ python server_tts_without_ros.py
 
 # 无 ROS / 无麦克风，命令行测试
 python fake_server.py
+
+# ROS1 语音服务（暂不支持，请联系我们解决）
+python server.py
 ```
 
 > ⚠️ 若启动报缺少 robot_voice 模块：确认已在 huisikaiwu 根目录执行过 `bash select_agent_and_voice.sh`。
 
-#### 3.2.2 天工 3.0
-天工 3.0 默认启用 ROS语音，天轶2.0及以前的机器人还在用 robot_voice，后续会逐步过渡到 ROS。[ros语音](https://zitd5je6f7j.feishu.cn/wiki/DiYewtlOFiwXEYkbMEsch4GBnvh)。
+#### 3.2.2 天工 3.0/ 天轶 2.5
+天工 3.0 / 天轶 2.5 默认启用 ROS语音，天轶2.0及以前的机器人还在用 robot_voice，后续会逐步过渡到 ROS。[ros语音](https://zitd5je6f7j.feishu.cn/wiki/DiYewtlOFiwXEYkbMEsch4GBnvh)。
 
-> 注意：kaiwu-agent 暂还没有通过 ROS 进行语音交互完成验证，目前只是理论上支持。后续会验证，如果有着急的需求，请联系我们。
+> ⚠️ ROS 语音依赖 rospy，运行前需先确保激活ros2环境：
+>
+> ```bash
+> source /opt/ros/jazzy/setup.bash # 激活系统级 ROS 2 基础环境
+> source ~/kerwin_ws/install/setup.bash # 加载自定义工作空间
+> ```
 
 #### 3.2.3 其他机器
 
 需要自行开发语音交互终端，通过 WebSocket 或者 ROS 与 Agent 交互。
 
-> 注意：暂还不支持二次开发的语音交互终端接入，后续将支持，如果有着急的需求，请联系我们。
+> 注意：框架暂未验证二次开发的语音交互终端接入，如果有着急的需求，请联系我们。
 
 ### 3.3 安装 kaiwu-agent
 

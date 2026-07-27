@@ -29,11 +29,11 @@ pip install -r requirements.txt
 4. 启动语音服务
 - 基于ros1 的语音服务
 ```bash
-python3 server.py
+python3 server.py # 目前应该不支持ros1了
 ```
 - 基于ros2 的语音服务
 ```bash
-python3 server_ros2.py
+python3 server_event.py
 ```
 - 不需要语音识别，只做语音合成和播报tts服务
 ```bash
@@ -44,7 +44,7 @@ python3 server_tts_without_ros.py
 python3 fake_server.py
 ```
 
-5. 启动kaiwu_agent，连接以下语音服务
+5. 启动kaiwu agent，连接以下语音服务
 - robot_voice通过websocket协议，对外提供以下语音服务
   - 语音识别（ASR，语音转文本）: 客户端通过websocket连接到 `ws://localhost:8765:voice`，这是持久化连接，你将收到robot_voice广播出来的json str格式的消息
     - `{'instruction': '语音文本', ...}`
